@@ -210,18 +210,47 @@ class Compiler(object):
         self.buffer('{%% set %s = %s %%}'%(assignment.name,assignment.val))
 
 
-    def format_path(self,path):
-        has_extension = os.path.basename(path).find('.')>-1
-        if not has_extension: path += self.extension
-        return path
+    def format_path(self,path, ipath=None):
+        '''
+        ipath is the interpolated path used in additional checks.
+
+        It can and should be passed in here if available to avoid running
+        the path through the regex again
+        '''
+        var = self.interpolate(path) if ipath is None else ipath
+        if var.startswith('{{') and var.endswith('}}'):
+            return var[2:-2]
+        else:
+            has_extension = os.path.basename(path).find('.')>-1
+            if not has_extension: path += self.extension
+            path = '"%s"' % path
+            return path
 
     def visitExtends(self,node):
-        path = self.format_path(node.path)
-        self.buffer('{%% extends "%s" %%}'%(path))
+        ipath = self.interpolate(node.path)
+        is_jade_var = node.path != ipath
+        path = self.format_path(node.path, ipath)
+        if is_jade_var:
+            var_name = '_extends_var_%s_' % path
+            pre_extends = '{%% set %s = %s + ".jade" %%}' % var_name, path
+            extends_path = var_name
+        else:
+            pre_extends = ''
+            extends_path = path
+        self.buffer('%s{%% extends %s %%}'%(pre_extends, extends_path))
 
     def visitInclude(self,node):
-        path = self.format_path(node.path)
-        self.buffer('{%% include "%s" %%}'%(path))
+        ipath = self.interpolate(node.path)
+        is_jade_var = node.path != ipath
+        path = self.format_path(node.path, ipath)
+        if is_jade_var:
+            var_name = '_include_var_%s_' % path
+            pre_include = '{%% set %s = %s + ".jade" %%}' % (var_name, path)
+            include_path = var_name
+        else:
+            pre_include = ''
+            include_path = path
+        self.buffer('%s{%% include %s %%}'%(pre_include, include_path))
 
     def visitBlockComment(self,comment):
         if not comment.buffer: return
